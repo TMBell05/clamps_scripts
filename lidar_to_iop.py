@@ -12,28 +12,30 @@ import numpy as np
 FILL_VALUE = -9999.0
 
 
-def hours_to_epoch_time(date, hours):
-
-    date = datetime(date.year, date.month, date.day)
-    dates_list = np.asarray([date + timedelta(hours=float(x)) for x in hours])
-    epoch_list = np.asarray([dt_to_epoch(dt) for dt in dates_list])
-
-    return epoch_list, dates_list
-
-
-def dt_to_epoch(dt):
-    return (dt - datetime(1970,1,1)).total_seconds()
-
-
 def write_variables(nc, variables):
-
+    """
+    Writes variables to the netcdf file
+    :param nc: Netcdf object to write data to
+    :param variables: Dictionary of data
+    :return: None
+    """
     for var in variables:
         try:
             nc.variables[var][:] = variables[var]
         except IndexError:
             nc.variables[var][:] = variables[var][0]
 
+
 def setup_new_nc(out_file, nc):
+    """
+    Sets up a new netcdf based of a 'template' netcdf.
+    :param out_file: Name of new netcdf
+    :param nc: Template netcdf object
+    :return:
+    new-nc - New netcdf object
+    variables - dictionary with keys named after variables for data storage. Feed this
+                to write_variables
+    """
     new_nc = netCDF4.Dataset(out_file, 'w')
 
     # Create the dimensions
@@ -77,11 +79,11 @@ def setup_new_nc(out_file, nc):
 def process_files(start, end, dir, out_file):
     """
     This function does the heavy lifting. It'll do blah blah
-    :param start:
-    :param end:
-    :param dir:
-    :param out_file:
-    :return:
+    :param start: Start datetime object
+    :param end: End datetime object
+    :param dir: Directory condtaining the files to process
+    :param out_file: Filename of the new netcdf
+    :return: None
     """
 
     # Do some garbage to get the right days in string format
@@ -128,8 +130,8 @@ def process_files(start, end, dir, out_file):
                 else:
                     variables[var] += [FILL_VALUE]
 
-        # Close the netcdf
-        nc.close()
+            # Close the netcdf
+            nc.close()
 
     write_variables(new_nc, variables)
 
