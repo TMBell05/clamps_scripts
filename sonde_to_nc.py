@@ -53,14 +53,25 @@ def sonde_to_nc(in_file, out_dir, out_prefix):
 
         # Figure out netcdf attributes
         ncattrs = {}
-        for i in range(11):  # Since header should always be 11 lines long; will grab release time separately
-            if "/" not in sonde[i]:
+        for i in range(11):  # Since header should always be 11 lines long; will grab release time and lat lons separately
+            if "/" not in sonde[i] and '(' not in sonde[i]:
                 tmp = sonde[i].split(": ")
-                ncattrs[tmp[0]] = tmp[1].lstrip().replace('\n', '') # Gets rid of white space and newline chars
+                tmp[0] = tmp[0].replace(' ', '_')
+                tmp[1] = tmp[1].lstrip().replace('\n', '')  # Gets rid of white space and newline chars
+                ncattrs[tmp[0]] = tmp[1]
 
         # Grab the release time and turn into a datetime object.
         release_time = datetime.strptime(sonde[11].replace('\n', ''),
                                          'Nominal Release Time (y,m,d,h,m,s):%Y, %m, %d, %H:%M:%S')
+        ncattrs['UTC_Release_Time'] = release_time.isoformat()
+
+        # Grab the lats, lons and alt
+        tmp = sonde[3].split(':')[1]
+        tmp = tmp.split(',')
+        ncattrs['release_lon'] = tmp[2].replace('\n', '')
+        ncattrs['release_lat'] = tmp[3].replace('\n', '')
+        ncattrs['release_alt'] = tmp[4].replace('\n', '')
+
 
         # Create the netcdf
         filename = release_time.strftime("{prefix}_%Y%m%d_%H%M%S.nc".format(prefix=out_prefix))
