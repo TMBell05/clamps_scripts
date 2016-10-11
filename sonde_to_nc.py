@@ -1,3 +1,9 @@
+"""
+This script converts NCAR QCd radiosonde text files to netcdf.
+
+Author: Tyler Bell (Oct 2016)
+"""
+
 import argparse
 import csv
 import os
@@ -10,7 +16,7 @@ import netCDF4
 
 def sonde_to_nc(in_file, out_dir, out_prefix):
     """
-
+    Converts radiosonde data that has been QCd by NCAR to netcdf
     :param in_file: File to convert to netcdf
     :param out_dir: Directory to write file to
     :param out_prefix:
@@ -53,7 +59,7 @@ def sonde_to_nc(in_file, out_dir, out_prefix):
 
         # Figure out netcdf attributes
         ncattrs = {}
-        for i in range(11):  # Since header should always be 11 lines long; will grab release time and lat lons separately
+        for i in range(11): # Since header should always be 11 lines long; will grab release time and latlons separately
             if "/" not in sonde[i] and '(' not in sonde[i]:
                 tmp = sonde[i].split(": ")
                 tmp[0] = tmp[0].replace(' ', '_')
