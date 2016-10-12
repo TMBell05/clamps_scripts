@@ -16,6 +16,8 @@ from datetime import datetime
 import netCDF4
 import numpy as np
 
+MISSING_DATA_VALUE = -9999.
+
 
 def _to_epoch(dt):
     return (dt - datetime(1970, 1, 1)).total_seconds()
@@ -34,7 +36,7 @@ def process_file(in_file, out_dir, out_prefix):
     data = []
     with open(in_file) as f:
         for line in f:
-            data.append(line)
+            data.append(line.replace('NaN', str(MISSING_DATA_VALUE)))
 
     # Get the number of lines in the header (hopefully in the first line of the file)
     header_size = int(data[0].split('=')[-1])
@@ -93,6 +95,8 @@ def process_file(in_file, out_dir, out_prefix):
         scan = '_RHI'
     elif 'PPI' in in_file:
         scan = '_PPI'
+    elif 'LOS' in in_file:
+        scan = '_LOS'
     else:
         scan = ''
 
@@ -110,37 +114,37 @@ def process_file(in_file, out_dir, out_prefix):
     nc.createDimension('range', size=num_ranges)
 
     # Create the variables
-    ncvar = nc.createVariable('epoch_time', 'i8', dimensions=('time',))
+    ncvar = nc.createVariable('epoch_time', 'i8', dimensions=('time',), fill_value=MISSING_DATA_VALUE)
     ncvar.setncattr('units', 'seconds')
     ncvar.setncattr('long_name', 'Time since 1 Jan 1970 at 00:00:00 UTC in seconds')
     ncvar[:] = time[:]
 
-    ncvar = nc.createVariable('range', 'f8', dimensions=('range',))
+    ncvar = nc.createVariable('range', 'f8', dimensions=('range',), fill_value=MISSING_DATA_VALUE)
     ncvar.setncattr('units', 'meters')
     ncvar.setncattr('long_name', 'Distance to range gate')
     ncvar[:] = range[:]
 
-    ncvar = nc.createVariable('azimuth', 'f8', dimensions=('time', 'range'))
+    ncvar = nc.createVariable('azimuth', 'f8', dimensions=('time', 'range'), fill_value=MISSING_DATA_VALUE)
     ncvar.setncattr('units', 'degrees')
     ncvar.setncattr('long_name', 'Azimuth angle')
     ncvar[:] = azimuth[:]
 
-    ncvar = nc.createVariable('elevation', 'f8', dimensions=('time', 'range'))
+    ncvar = nc.createVariable('elevation', 'f8', dimensions=('time', 'range'), fill_value=MISSING_DATA_VALUE)
     ncvar.setncattr('units', 'degrees')
     ncvar.setncattr('long_name', 'Elevation angle')
     ncvar[:] = elevation[:]
 
-    ncvar = nc.createVariable('radial_wind', 'f8', dimensions=('time', 'range'))
+    ncvar = nc.createVariable('radial_wind', 'f8', dimensions=('time', 'range'), fill_value=MISSING_DATA_VALUE)
     ncvar.setncattr('units', 'm/s')
     ncvar.setncattr('long_name', 'Radial wind speed')
     ncvar[:] = radial_wind[:]
 
-    ncvar = nc.createVariable('dispersion', 'f8', dimensions=('time', 'range'))
+    ncvar = nc.createVariable('dispersion', 'f8', dimensions=('time', 'range'), fill_value=MISSING_DATA_VALUE)
     ncvar.setncattr('units', 'm/s')
     ncvar.setncattr('long_name', 'Radial wind speed dispersion')
     ncvar[:] = dispersion[:]
 
-    ncvar = nc.createVariable('cnr', 'f8', dimensions=('time', 'range'))
+    ncvar = nc.createVariable('cnr', 'f8', dimensions=('time', 'range'), fill_value=MISSING_DATA_VALUE)
     ncvar.setncattr('units', 'dB')
     ncvar.setncattr('long_name', 'Carrier to noise ratio')
     ncvar[:] = cnr[:]
@@ -159,7 +163,10 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    process_file(args.in_file, args.out_dir, args.out_prefix)
+    try:
+        process_file(args.in_file, args.out_dir, args.out_prefix)
 
+    except Exception:
+        print args.in_file
 
 
