@@ -108,6 +108,7 @@ def process_file(in_file, out_dir, out_prefix):
 
     # Add attributes
     nc.setncatts(attrs)
+    nc.setncattr('start_time', date.isoformat())  # Add start time to attributes 
 
     # Create Dimensions
     nc.createDimension('time', size=None)
