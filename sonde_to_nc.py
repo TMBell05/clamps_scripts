@@ -67,8 +67,8 @@ def sonde_to_nc(in_file, out_dir, out_prefix):
                 ncattrs[tmp[0]] = tmp[1]
 
         # Grab the release time and turn into a datetime object.
-        release_time = datetime.strptime(sonde[11].replace('\n', ''),
-                                         'Nominal Release Time (y,m,d,h,m,s):%Y, %m, %d, %H:%M:%S')
+        release_time = datetime.strptime(sonde[4].replace('\n', ''),
+                                         'UTC Release Time (y,m,d,h,m,s):    %Y, %m, %d, %H:%M:%S')
         ncattrs['UTC_Release_Time'] = release_time.isoformat()
 
         # Grab the lats, lons and alt
@@ -88,11 +88,11 @@ def sonde_to_nc(in_file, out_dir, out_prefix):
         nc.setncatts(ncattrs)
 
         # Create the time dimension
-        nc.createDimension('time', None)
+        nc.createDimension('press', None)
 
         # Add the data
         for var in data.keys():
-            nc_var = nc.createVariable(var, 'f', dimensions=('time',))
+            nc_var = nc.createVariable(var, 'f', dimensions=('press',))
             nc_var.setncattr('units', data[var][0])
             nc_var[:] = data[var][2:]
 
