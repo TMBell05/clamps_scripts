@@ -123,7 +123,7 @@ def process_file(in_file):
         vel = list_to_masked_array(vel, FILL_VALUE)
 
         # Calculate the vad and height for this range ring
-        tmp_u, tmp_v, gates = calc_vad_3d(az, elev, vel)
+        tmp_u, tmp_v, gates = calc_vad(az, elev, vel)
 
         # Calculate the RMSE
         N = float(vel.size)
