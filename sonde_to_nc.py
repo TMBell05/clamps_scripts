@@ -92,7 +92,15 @@ def sonde_to_nc(in_file, out_dir, out_prefix):
 
         # Add the data
         for var in data.keys():
-            nc_var = nc.createVariable(var, 'f', dimensions=('press',))
+            if var == 'Temp': var_name = 'tdry'
+            elif var == 'Press': var_name = 'pres'
+            elif var == 'spd': var_name = 'wspd'
+            elif var == 'Ucmp': var_name = 'u_wind'
+            elif var == 'Vcmp': var_name = 'v_wind'
+            elif var == 'Wcmp': var_name = 'w_wind'
+            else: var_name = var
+
+            nc_var = nc.createVariable(var_name.lower(), 'f', dimensions=('press',))
             nc_var.setncattr('units', data[var][0])
             nc_var[:] = data[var][2:]
 
