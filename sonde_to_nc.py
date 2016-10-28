@@ -111,10 +111,11 @@ def sonde_to_nc(in_file, out_dir, out_prefix):
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-i', dest='in_file')
+    parser.add_argument('-i', dest='in_files', nargs='*')
     parser.add_argument('-O', dest='out_prefix', default='sonde')
     parser.add_argument('-o', dest='out_dir', default=os.getcwd())
 
     args = parser.parse_args()
 
-    sonde_to_nc(args.in_file, args.out_dir, args.out_prefix)
+    for f in sorted(args.in_files):
+        sonde_to_nc(f, args.out_dir, args.out_prefix)
