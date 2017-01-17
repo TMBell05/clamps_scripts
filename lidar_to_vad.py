@@ -19,7 +19,6 @@ HGT_LIM = (0, 1000)
 PROFILES_PER_PLOT = 5
 
 
-# TODO - GET 3D RETRIEVAL WORKING
 def calc_vad_3d(az, elev, vel):
     """
     IN DEVELOPMENT DO NOT USE
@@ -45,7 +44,7 @@ def calc_vad_3d(az, elev, vel):
         W = sum(vel)
         X = sum(sin(az))*cos(elev)
         Y = sum(cos(az))*cos(elev)
-        Z = sin(elev)
+        Z = sum(az)*sin(elev)
 
         # solve A = uB + vC + wG , D = uE + vF + wH and W = uX + vY+ wZ
         y = np.array([[B, E, X], [C, F, Y], [G, H, Z]])
@@ -58,7 +57,6 @@ def calc_vad_3d(az, elev, vel):
             u = sol[0]
             v = sol[1]
             w = sol[2]
-            print u, v, w
             return u, v, w
         except np.linalg.linalg.LinAlgError:
             return FILL_VALUE, FILL_VALUE, FILL_VALUE
@@ -66,7 +64,27 @@ def calc_vad_3d(az, elev, vel):
         return FILL_VALUE, FILL_VALUE, FILL_VALUE
 
 
+def calc_homogeneity(raw_vr, derived_vr):
+    """
+    Determines homogeneity of the wind field as described in E. Paschke et. al. 2015 section 2.2.4
+    :param raw_vr: Raw radial velocity
+    :param derived_vr: Radial velocity derived from wind retrieval
+    :return:
+    """
+
+    vr_bar = np.sum(raw_vr)
+
+    return 1 - np.sum((raw_vr - derived_vr)**2) / np.sum((raw_vr - vr_bar)**2)
+
+
 def calc_vad(az, elev, vel):
+    """
+    Performs a 2d (horizontal) VAD retrieval
+    :param az:
+    :param elev:
+    :param vel:
+    :return:
+    """
     elev = np.deg2rad(elev)
     az = np.deg2rad(az)
 
@@ -89,15 +107,22 @@ def calc_vad(az, elev, vel):
             # print sol
             u = sol[0]
             v = sol[1]
-            return u, v, len(vel)
+            return u, v
         except np.linalg.linalg.LinAlgError:
             return FILL_VALUE, FILL_VALUE, FILL_VALUE
     else:
         return FILL_VALUE, FILL_VALUE, FILL_VALUE
 
 
-def process_file(in_file):
-
+def process_file(in_file, height=None, sinfit_dir=None):
+    """
+    Processes a line of sight netcdf file and outputs the vad. If height is specified,
+    it will only return values nearest that height.
+    :param in_file: File to process
+    :param height: Height to process if desired
+    :param sinfit_loc: Specify if you want to output a sin fit graph. A specific height MUST be specified.
+    :return:
+    """
     # Open the netcdf
     nc = netCDF4.Dataset(in_file)
     date = datetime.strptime(nc.start_time, "%Y-%m-%dT%H:%M:%S")
@@ -105,7 +130,9 @@ def process_file(in_file):
     hgt = []
     u = []
     v = []
+    w = []
     rmse = []
+    r_sq = []
 
     for i, range in enumerate(nc['range'][:]):
 
@@ -123,76 +150,209 @@ def process_file(in_file):
         vel = list_to_masked_array(vel, FILL_VALUE)
 
         # Calculate the vad and height for this range ring
-        tmp_u, tmp_v, gates = calc_vad(az, elev, vel)
+        tmp_u, tmp_v, tmp_w = calc_vad_3d(az, elev, vel)
 
         # Calculate the RMSE
         N = float(vel.size)
-        tmp_E = vel - (np.sin(np.deg2rad(az)) * tmp_u) - (np.cos(np.deg2rad(az)) * tmp_v)
+        az_rad = np.deg2rad(az)
+        elev_rad = np.deg2rad(elev)
+
+        derived_vr = (sin(az_rad) * cos(elev_rad) * tmp_u) + \
+                     (cos(az_rad) * cos(elev_rad) * tmp_v) + \
+                     (sin(elev_rad) * tmp_w)
+
+        tmp_E = vel - derived_vr
+
+        # Calculate rms error
         tmp_RMSE = np.sqrt(1 / N * np.sum(tmp_E ** 2))
+
+        tmp_r_sq = calc_homogeneity(vel, derived_vr)
 
         # Append to the lists for plotting
         u.append(tmp_u)
         v.append(tmp_v)
+        w.append(tmp_w)
         hgt.append(VADAnalysis.core.ray_height(range, elev))
         rmse.append(tmp_RMSE)
+        r_sq.append(tmp_r_sq)
+
+    if height is not None:
+        i = (np.abs(np.asarray(hgt) - height)).argmin()
+        u = u[i]
+        v = v[i]
+        w = w[i]
+        hgt = hgt[i]
+        rmse = rmse[i]
+
+        if sinfit_dir is not None:
+            filename = "sinfit_{height}m_{date}.png".format(height=height, date=date.strftime("%Y%m%d_%H%M%S"))
+            filename = os.path.join(sinfit_dir, filename)
+
+            cnr = nc['cnr'][:, i].transpose()
+            vel = nc['radial_wind'][:, i].transpose()
+            az = nc['azimuth'][:, i].transpose()
+            elev = np.round(np.mean(nc['elevation'][:, i]), 2)
+
+            vel = np.where(cnr <= CNR_THRESH, np.nan, vel)
+
+            az_rad = np.deg2rad(az)
+            elev_rad = np.deg2rad(elev)
+
+            plt.figure()
+            plt.scatter(az, vel)
+            plt.plot(az, (u * sin(az_rad) * cos(elev_rad) + v * cos(az_rad) * cos(elev_rad) + w * sin(elev_rad)).tolist())
+            plt.ylim((-20, 20))
+            plt.xlim((0, 360))
+            plt.title("{date} Elev={elev} Height={height}".format(date=date.strftime("%Y%m%d_%H%M%S"),
+                                                                  elev=elev,
+                                                                  height=hgt))
+            plt.savefig(filename)
+            plt.close()
 
     # Close the netcdf
     nc.close()
 
-    return u, v, hgt, rmse, date
+    return u, v, w, hgt, rmse, r_sq, date, elev
+
+
+def write_to_nc(filename, date, elev, u, v, w, hgt, rmse, r_sq):
+    # Create the netcdf
+    nc = netCDF4.Dataset(filename, 'w', format="NETCDF4")
+
+    # Create the height dimension
+    nc.createDimension('height', len(hgt))
+
+    # Add the attributes
+    nc.setncattr("elev", elev)
+    nc.setncattr("date", date.isoformat())
+
+    # Create the variables
+    u_var = nc.createVariable('u', 'f8', ('height',), fill_value=FILL_VALUE)
+    v_var = nc.createVariable('v', 'f8', ('height',), fill_value=FILL_VALUE)
+    w_var = nc.createVariable('w', 'f8', ('height',), fill_value=FILL_VALUE)
+    hgt_var = nc.createVariable('hgt', 'f8', ('height',), fill_value=FILL_VALUE)
+    rms_var = nc.createVariable('rms', 'f8', ('height',), fill_value=FILL_VALUE)
+    r_sq_var = nc.createVariable('r_sq', 'f8', ('height',), fill_value=FILL_VALUE)
+
+    u_var[:] = np.where(np.isnan(u), FILL_VALUE, u)
+    v_var[:] = np.where(np.isnan(v), FILL_VALUE, v)
+    w_var[:] = np.where(np.isnan(w), FILL_VALUE, w)
+    hgt_var[:] = np.where(np.isnan(hgt), FILL_VALUE, hgt)
+    rms_var[:] = np.where(np.isnan(rmse), FILL_VALUE, rmse)
+    r_sq_var[:] = np.where(np.isnan(r_sq), FILL_VALUE, r_sq)
+
+
+    # Close the netcdf
+    nc.close()
 
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-i', dest='in_files', nargs='*')
-    parser.add_argument('-O', dest='out_prefix', default='sonde')
+    parser.add_argument('-O', dest='out_prefix', default='vad')
     parser.add_argument('-o', dest='out_dir', default=os.getcwd())
 
     args = parser.parse_args()
 
+    vad_ws = np.zeros(len(args.in_files))
+    vad_wd = np.zeros(len(args.in_files))
+    time = np.zeros(len(args.in_files), dtype=datetime)
+    vad_rmse = np.zeros(len(args.in_files))
+
+    height = 100
+
     for i, f in enumerate(sorted(args.in_files)):
         print f
-        u, v, hgt, rmse, date = process_file(f)
+        u, v, w, hgt, rmse, r_sq, date, elev = process_file(f)#, height=height, sinfit_dir=args.out_dir)
 
-        fig = plt.figure(1, figsize=(15, 7))
-        fig.suptitle(date.isoformat())
-        plt.subplot(1, 3, 1)
-        plt.plot(u, hgt, label=date.strftime("%H:%M"))
-        plt.title("U velocity vs Height")
-        plt.xlabel('Velocity (m/s)')
-        plt.ylabel('Height (m)')
-        plt.xlim(VEL_LIM)
-        plt.ylim(HGT_LIM)
-        plt.legend()
+        nc_name = "{prefix}_{date}_{elev}.nc"
+        nc_name = nc_name.format(prefix=args.out_prefix, date=date.strftime("%Y%m%d_%H%M%S"), elev=elev)
+        nc_name = os.path.join(args.out_dir, nc_name)
 
-        plt.subplot(1, 3, 2)
-        plt.plot(v, hgt)
-        plt.title("V velocity vs Height")
-        plt.xlabel('Velocity (m/s)')
-        plt.ylabel('Height (m)')
-        plt.xlim(VEL_LIM)
-        plt.ylim(HGT_LIM)
+        write_to_nc(nc_name, date, elev, u, v, w, hgt, rmse, r_sq)
 
-        plt.subplot(1, 3, 3)
-        plt.plot(rmse, hgt)
-        plt.title("RMS vs Height")
-        plt.xlabel('RMS')
-        plt.ylabel('Height (m)')
-        plt.xlim((0, 10))
-        plt.ylim(HGT_LIM)
 
-        # Create profile base on start time of first profile
-        if i % PROFILES_PER_PLOT == 0:
-            image_name = "{prefix}_{date}.png"
-            image_name = image_name.format(prefix=args.out_prefix, date=date.strftime("%Y%m%d_%H%M%S"))
-            image_name = os.path.join(args.out_dir, image_name)
+        #
+        # ws = np.sqrt(u**2 + v**2)
+        # wd = np.arctan2(u, v)
+        #
+        # vad_ws[i] = ws
+        # vad_wd[i] = np.rad2deg(wd)
+        # time[i] = date
+        # vad_rmse[i] = rmse
 
-        if i % PROFILES_PER_PLOT == PROFILES_PER_PLOT - 1:
-            # Save the image
-            plt.savefig(image_name)
-            plt.clf()
-            plt.close()
+
+        # fig = plt.figure(1, figsize=(25, 7))
+        # fig.suptitle(date.isoformat())
+        # plt.subplot(1, 5, 1)
+        # plt.plot(u, hgt, label=date.strftime("%H:%M"))
+        # plt.title("U velocity vs Height")
+        # plt.xlabel('Velocity (m/s)')
+        # plt.ylabel('Height (m)')
+        # plt.xlim(VEL_LIM)
+        # plt.ylim(HGT_LIM)
+        # plt.legend()
+        #
+        # plt.subplot(1, 5, 2)
+        # plt.plot(v, hgt)
+        # plt.title("V velocity vs Height")
+        # plt.xlabel('Velocity (m/s)')
+        # plt.ylabel('Height (m)')
+        # plt.xlim(VEL_LIM)
+        # plt.ylim(HGT_LIM)
+        #
+        # plt.subplot(1, 5, 3)
+        # plt.plot(w, hgt)
+        # plt.title("W velocity vs Height")
+        # plt.xlabel('Velocity (m/s)')
+        # plt.ylabel('Height (m)')
+        # plt.xlim((-5, 5))
+        # plt.ylim(HGT_LIM)
+        #
+        # plt.subplot(1, 5, 4)
+        # plt.plot(rmse, hgt)
+        # plt.title("RMS vs Height")
+        # plt.xlabel('RMS')
+        # plt.ylabel('Height (m)')
+        # plt.xlim((0, 10))
+        # plt.ylim(HGT_LIM)
+        #
+        # plt.subplot(1, 5, 5)
+        # plt.plot(r_sq, hgt)
+        # plt.title("$R^2$ vs Height")
+        # plt.xlabel('$R^2$')
+        # plt.ylabel('Height (m)')
+        # plt.xlim((.8, 1))
+        # plt.ylim(HGT_LIM)
+        #
+        # # Create profile base on start time of first profile
+        # if i % PROFILES_PER_PLOT == 0:
+        #     image_name = "{prefix}_{date}.png"
+        #     image_name = image_name.format(prefix=args.out_prefix, date=date.strftime("%Y%m%d_%H%M%S"))
+        #     image_name = os.path.join(args.out_dir, image_name)
+        #
+        # if i % PROFILES_PER_PLOT == PROFILES_PER_PLOT - 1:
+        #     # Save the image
+        #     plt.savefig(image_name)
+        #     plt.clf()
+        #     plt.close()
+
+    # fig, (ax1, ax2) = plt.subplots(2, sharex=True)
+    # ind = np.logical_and(~np.isnan(vad_wd), time != 0)
+    # vad_wd = np.where(vad_wd[ind] < 0, np.asarray(vad_wd[ind]) + 360., vad_wd[ind])
+    # fig.suptitle("Time series %s" % time[1].strftime("%Y%m%d"))
+    #
+    # ax1.scatter(time[ind], vad_ws[ind], c=vad_rmse[ind])
+    # ax1.set_ylim(0, 30)
+    # ax1.set_xlim(time[0], time[-1])
+    # ax1.set_title("Wind Speed ($m s^-1$)")
+    #
+    # ax2.scatter(time[ind], vad_wd[ind], c=vad_rmse[ind])
+    # ax2.set_ylim(0, 360)
+    # ax2.set_title("Wind Direciton")
+    # plt.savefig("{date}_{height}m_timeseries.png".format(date=time[1].strftime("%Y%m%d"), height=height))
+    # plt.close()
 
 
 
