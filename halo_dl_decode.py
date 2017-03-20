@@ -114,9 +114,9 @@ def process_file(in_file, out_dir, prefix):
 
     # Get the filename figured out
     if prefix is None:
-        filename = start_time.strftime("{type}_%Y%m%d_%H%M.nc".format(type=scan_type))
+        filename = start_time.strftime("{type}_%Y%m%d_%H%M%S.nc".format(type=scan_type))
     else:
-        filename = start_time.strftime("{prefix}_{type}_%Y%m%d_%H%M.nc".format(type=scan_type, prefix=prefix))
+        filename = start_time.strftime("{prefix}_{type}_%Y%m%d_%H%M%S.nc".format(type=scan_type, prefix=prefix))
 
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
