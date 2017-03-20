@@ -1,3 +1,15 @@
+"""
+Decoder for raw .hpl files that are outputted by the Halo Photonics doppler lidar.
+Many things are hard coded and should be documented with in-line comments. Outputs
+decoded data to netcdf-4. May have to change the 'lookup' variable to account for
+different header info. Though not originally coded to decode RHI scans, it shouldn't
+be a problem as long as it is specified in the lookup table
+
+
+Author: Tyler Bell (March 2017)
+"""
+
+
 import netCDF4
 import numpy as np
 import logging
@@ -8,6 +20,8 @@ from datetime import datetime, timedelta
 from glob import glob
 
 
+# Key is name of scan type in header, value is name as it should appear
+# in the filename
 lookup = {'User file 4 - stepped': 'ppi',
           'User file 3 - stepped': 'ppi',
           'User file 2 - stepped': 'fp',
@@ -21,7 +35,7 @@ FILL_VALUE = -9999
 def decode_header(header):
     """
     Takes in a list of lines from the raw hpl file. Separates them by
-    tab and removes unecessary text
+    tab and removes unnecessary text
     """
     new_header = {}
 
