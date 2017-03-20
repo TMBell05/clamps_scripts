@@ -8,11 +8,11 @@ from datetime import datetime, timedelta
 from glob import glob
 
 
-lookup = {'User file 4 - stepped': 'vad',
-          'User file 3 - stepped': 'vad',
+lookup = {'User file 4 - stepped': 'ppi',
+          'User file 3 - stepped': 'ppi',
           'User file 2 - stepped': 'fp',
-          'User file 1 - stepped': 'vad',
-          'VAD - stepped': 'vad',
+          'User file 1 - stepped': 'ppi',
+          'VAD - stepped': 'ppi',
           'Stare - stepped': 'fp'}
 
 FILL_VALUE = -9999
