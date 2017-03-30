@@ -22,7 +22,7 @@ from glob import glob
 
 # Key is name of scan type in header, value is name as it should appear
 # in the filename
-lookup = {'User file 4 - stepped': 'ppi',
+lookup = {'User file 4 - stepped': 'fp',
           'User file 3 - stepped': 'ppi',
           'User file 2 - stepped': 'fp',
           'User file 1 - stepped': 'ppi',
@@ -124,7 +124,7 @@ def process_file(in_file, out_dir, prefix):
     time_offset = base_time - epoch
 
     # Figure out netcdf attrs
-    nc_attrs = {}  # None right now
+    nc_attrs = {'start_time': start_time.strftime('%Y-%m-%dT%H:%M:%S')}  # None right now
 
     # Get the filename figured out
     if prefix is None:
@@ -143,8 +143,13 @@ def process_file(in_file, out_dir, prefix):
 
     nc = netCDF4.Dataset(filename, "w", format="NETCDF4")
 
+    # Create the dimensions
     nc.createDimension('time', size=None)
     nc.createDimension('range', size=len(rng))
+
+    # Set the netcdf attributes
+    logging.debug('Writing attributes')
+    nc.setncatts(nc_attrs)
 
     logging.debug('Writing base_time')
     var = nc.createVariable('base_time', 'i8')
@@ -164,35 +169,35 @@ def process_file(in_file, out_dir, prefix):
     var.setncattr('units', 'UTC')
     var[:] = hour
 
-    logging.debug('Writing height')
+    logging.debug('Writing range')
     var = nc.createVariable('range', 'f8', dimensions=('range',))
     var.setncattr('long_name', 'height')
     var.setncattr('units', 'km AGL')
-    var[:] = rng/1.e3
+    var[:] = rng
 
     logging.debug('Writing azimuth')
-    var = nc.createVariable('azimuth', 'f8', dimensions=('time',))
+    var = nc.createVariable('azimuth', 'f8', dimensions=('time', 'range'))
     var.setncattr('long_name', 'Azimuth Angle')
     var.setncattr('units', 'degrees')
-    var[:] = az
+    var[:] = np.tile(az, (len(rng), 1)).transpose()
 
     logging.debug('Writing elevation')
-    var = nc.createVariable('elevation', 'f8', dimensions=('time',))
+    var = nc.createVariable('elevation', 'f8', dimensions=('time', 'range'))
     var.setncattr('long_name', 'Elevation angle')
     var.setncattr('units', 'degrees above the horizon')
-    var[:] = elev
+    var[:] = np.tile(elev, (len(rng), 1)).transpose()
 
     logging.debug('Writing pitch')
-    var = nc.createVariable('pitch', 'f8', dimensions=('time',))
+    var = nc.createVariable('pitch', 'f8', dimensions=('time', 'range'))
     var.setncattr('long_name', 'Instrument Pitch')
     var.setncattr('units', 'degrees')
-    var[:] = pitch
+    var[:] = np.tile(pitch, (len(rng), 1)).transpose()
 
     logging.debug('Writing roll')
-    var = nc.createVariable('roll', 'f8', dimensions=('time',))
+    var = nc.createVariable('roll', 'f8', dimensions=('time', 'range'))
     var.setncattr('long_name', 'Instrument Roll')
     var.setncattr('units', 'degrees')
-    var[:] = roll
+    var[:] = np.tile(roll, (len(rng), 1)).transpose()
 
     logging.debug('Writing velocity')
     var = nc.createVariable('velocity', 'f8', dimensions=('time', 'range'))

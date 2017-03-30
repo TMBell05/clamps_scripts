@@ -1,7 +1,6 @@
 import argparse
 import os
 from datetime import datetime
-from glob import glob
 
 import matplotlib.pyplot as plt
 import netCDF4
@@ -9,14 +8,85 @@ import numpy as np
 
 from numpy import sin, cos
 
-import VADAnalysis
-from VADAnalysis.core import list_to_masked_array
 
+# Global Values
 FILL_VALUE = -9999.
-CNR_THRESH = -27.
 VEL_LIM = (-30, 30)
 HGT_LIM = (0, 1000)
-PROFILES_PER_PLOT = 5
+PROFILES_PER_PLOT = 2
+Re = 6371000
+R43 = Re * 4.0 / 3.0
+
+var_lookup = {'leo':
+                  {
+                      'vel': 'radial_wind',
+                      'thresh_var': 'cnr',
+                      'thresh_value': -27.,
+                      'az': 'azimuth',
+                      'elev': 'elevaton',
+                      'range': 'range',
+                  },
+              'mp1':
+                  {
+                      'vel': 'velocity',
+                      'thresh_var': 'intensity',
+                      'thresh_value': 1.015,
+                      'az': 'azimuth',
+                      'elev': 'elevation',
+                      'range': 'range',
+                  },
+              'mp3':
+                  {
+                      'vel': 'velocity',
+                      'thresh_var': 'intensity',
+                      'thresh_value': 1.005,
+                      'az': 'azimuth',
+                      'elev': 'elevation',
+                      'range': 'range',
+                  },
+             }
+
+
+def _ray_height(rng, elev, H0=0, R1=R43):
+    """
+    Center of radar beam height calculation.
+    Rinehart (1997), Eqn 3.12, Bech et al. (2003) Eqn 3
+    INPUT::
+    -----
+    r : float
+        Range from radar to point of interest [m]
+    elev : float
+        Elevation angle of radar beam [deg]
+    H0 : float
+        Height of radar antenna [m]
+    R1 : float
+        Effective radius
+    OUTPUT::
+    -----
+    H : float
+        Radar beam height [m]
+    USAGE::
+    -----
+    H = ray_height(r,elev,H0,[R1=6374000.*4/3])
+    NOTES::
+    -----
+    If no Effective radius is given a "standard atmosphere" is assumed,
+       the 4/3 approximation.
+    Bech et al. (2003) use a factor ke that is the ratio of earth's radius
+       to the effective radius (see r_effective function) and Eqn 4 in B03
+    """
+
+    # Convert earth's radius to km for common dN/dH values and then
+    # multiply by 1000 to return radius in meters
+    hgt = np.sqrt(rng ** 2 + R1 ** 2 + 2 * rng * R1 * np.sin(np.deg2rad(elev)))
+    hgt = hgt - R1 + H0
+
+    return hgt
+
+
+def _list_to_masked_array(in_list, mask_value):
+    a = np.array(in_list)
+    return np.ma.masked_where(a == mask_value, a)
 
 
 def calc_vad_3d(az, elev, vel):
@@ -32,19 +102,19 @@ def calc_vad_3d(az, elev, vel):
 
     if vel.size > 1:  # If there could be sufficient data points...
         A = sum(vel * sin(az))
-        B = sum(sin(az) ** 2) * cos(elev)
-        C = sum(cos(az) * sin(az)) * cos(elev)
-        G = sum(sin(az)) * sin(elev)
+        B = sum(sin(az) ** 2 * cos(elev))
+        C = sum(cos(az) * sin(az) * cos(elev))
+        G = sum(sin(az) * sin(elev))
 
         D = sum(vel * cos(az))
-        E = sum(sin(az) * cos(az)) * cos(elev)
-        F = sum(cos(az) ** 2) * cos(elev)
-        H = sum(cos(az)) * sin(elev)
+        E = sum(sin(az) * cos(az) * cos(elev))
+        F = sum(cos(az) ** 2 * cos(elev))
+        H = sum(cos(az) * sin(elev))
 
         W = sum(vel)
-        X = sum(sin(az))*cos(elev)
-        Y = sum(cos(az))*cos(elev)
-        Z = sum(az)*sin(elev)
+        X = sum(sin(az)*cos(elev))
+        Y = sum(cos(az)*cos(elev))
+        Z = sum(az*sin(elev))
 
         # solve A = uB + vC + wG , D = uE + vF + wH and W = uX + vY+ wZ
         y = np.array([[B, E, X], [C, F, Y], [G, H, Z]])
@@ -114,11 +184,12 @@ def calc_vad(az, elev, vel):
         return FILL_VALUE, FILL_VALUE, FILL_VALUE
 
 
-def process_file(in_file, height=None, sinfit_dir=None):
+def process_file(in_file, system, height=None, sinfit_dir=None):
     """
     Processes a line of sight netcdf file and outputs the vad. If height is specified,
     it will only return values nearest that height.
     :param in_file: File to process
+    :param system: System to use in lookup table
     :param height: Height to process if desired
     :param sinfit_loc: Specify if you want to output a sin fit graph. A specific height MUST be specified.
     :return:
@@ -134,20 +205,20 @@ def process_file(in_file, height=None, sinfit_dir=None):
     rmse = []
     r_sq = []
 
-    for i, range in enumerate(nc['range'][:]):
+    for i, range in enumerate(nc[var_lookup[system]['range']][:]):
 
         # Get the required stuff for this range ring
-        cnr = nc['cnr'][:, i].transpose()
-        vel = nc['radial_wind'][:, i].transpose()
-        az = nc['azimuth'][:, i].transpose()
-        elev = np.round(np.mean(nc['elevation'][:, i]), 2)
+        cnr = nc[var_lookup[system]['thresh_var']][:, i].transpose()
+        vel = nc[var_lookup[system]['vel']][:, i].transpose()
+        az = nc[var_lookup[system]['az']][:, i].transpose()
+        elev = nc[var_lookup[system]['elev']][:, i]
 
         # Filter out the bad values based on CNR
-        az = np.where(cnr <= CNR_THRESH, FILL_VALUE, az)
-        vel = np.where(cnr <= CNR_THRESH, FILL_VALUE, vel)
+        az = np.where(cnr <= var_lookup[system]['thresh_value'], FILL_VALUE, az)
+        vel = np.where(cnr <= var_lookup[system]['thresh_value'], FILL_VALUE, vel)
 
-        az = list_to_masked_array(az, FILL_VALUE)
-        vel = list_to_masked_array(vel, FILL_VALUE)
+        az = _list_to_masked_array(az, FILL_VALUE)
+        vel = _list_to_masked_array(vel, FILL_VALUE)
 
         # Calculate the vad and height for this range ring
         tmp_u, tmp_v, tmp_w = calc_vad_3d(az, elev, vel)
@@ -172,7 +243,7 @@ def process_file(in_file, height=None, sinfit_dir=None):
         u.append(tmp_u)
         v.append(tmp_v)
         w.append(tmp_w)
-        hgt.append(VADAnalysis.core.ray_height(range, elev))
+        hgt.append(_ray_height(range, elev[0]))
         rmse.append(tmp_RMSE)
         r_sq.append(tmp_r_sq)
 
@@ -188,12 +259,12 @@ def process_file(in_file, height=None, sinfit_dir=None):
             filename = "sinfit_{height}m_{date}.png".format(height=height, date=date.strftime("%Y%m%d_%H%M%S"))
             filename = os.path.join(sinfit_dir, filename)
 
-            cnr = nc['cnr'][:, i].transpose()
-            vel = nc['radial_wind'][:, i].transpose()
-            az = nc['azimuth'][:, i].transpose()
-            elev = np.round(np.mean(nc['elevation'][:, i]), 2)
+            cnr = nc[var_lookup[system]['thresh_var']][:, i].transpose()
+            vel = nc[var_lookup[system]['vel']][:, i].transpose()
+            az = nc[var_lookup[system]['az']][:, i].transpose()
+            elev = np.round(np.mean(nc[var_lookup[system]['elevation']][:, i]), 2)
 
-            vel = np.where(cnr <= CNR_THRESH, np.nan, vel)
+            vel = np.where(cnr <= var_lookup[system]['thresh_value'], np.nan, vel)
 
             az_rad = np.deg2rad(az)
             elev_rad = np.deg2rad(elev)
@@ -241,7 +312,6 @@ def write_to_nc(filename, date, elev, u, v, w, hgt, rmse, r_sq):
     rms_var[:] = np.where(np.isnan(rmse), FILL_VALUE, rmse)
     r_sq_var[:] = np.where(np.isnan(r_sq), FILL_VALUE, r_sq)
 
-
     # Close the netcdf
     nc.close()
 
@@ -252,6 +322,7 @@ if __name__=='__main__':
     parser.add_argument('-i', dest='in_files', nargs='*')
     parser.add_argument('-O', dest='out_prefix', default='vad')
     parser.add_argument('-o', dest='out_dir', default=os.getcwd())
+    parser.add_argument('-s', dest='system', default=None)
 
     args = parser.parse_args()
 
@@ -264,24 +335,22 @@ if __name__=='__main__':
 
     for i, f in enumerate(sorted(args.in_files)):
         print f
-        u, v, w, hgt, rmse, r_sq, date, elev = process_file(f)#, height=height, sinfit_dir=args.out_dir)
-
+        u, v, w, hgt, rmse, r_sq, date, elev = process_file(f, system=args.system)#, height=height, sinfit_dir=args.out_dir)
         nc_name = "{prefix}_{date}_{elev}.nc"
-        nc_name = nc_name.format(prefix=args.out_prefix, date=date.strftime("%Y%m%d_%H%M%S"), elev=elev)
+        nc_name = nc_name.format(prefix=args.out_prefix, date=date.strftime("%Y%m%d_%H%M%S"), elev=int(np.mean(elev)))
         nc_name = os.path.join(args.out_dir, nc_name)
 
         write_to_nc(nc_name, date, elev, u, v, w, hgt, rmse, r_sq)
 
 
         #
-        # ws = np.sqrt(u**2 + v**2)
+        # ws = np.sqrt(np.asarray(u)**2 + np.asarray(v)**2)
         # wd = np.arctan2(u, v)
         #
         # vad_ws[i] = ws
         # vad_wd[i] = np.rad2deg(wd)
         # time[i] = date
         # vad_rmse[i] = rmse
-
 
         # fig = plt.figure(1, figsize=(25, 7))
         # fig.suptitle(date.isoformat())
