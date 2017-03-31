@@ -1,3 +1,12 @@
+"""
+Calculates VADs based on a sin fit of the data. Can specify different keynames in 'var_lookup'
+to account for different qc thresholds and variable names.
+
+TODO-Make plotting more elegant than uncommenting stuff
+
+Author: Tyler Bell (March 2017)
+"""
+
 import argparse
 import os
 from datetime import datetime
