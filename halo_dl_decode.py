@@ -170,7 +170,7 @@ def process_file(in_file, out_dir, prefix):
     logging.debug('Writing epoch')
     var = nc.createVariable('epoch', 'i8', dimensions=('time',))
     var.setncattr('long_name', 'Epoch Time')
-    var.setncattr('unis', 'seconds since 1970-01-01 00:00:00 UTC')
+    var.setncattr('units', 'seconds since 1970-01-01 00:00:00 UTC')
     var[:] = epoch
 
     logging.debug('Writing hour')
