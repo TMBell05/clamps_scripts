@@ -68,13 +68,17 @@ def process_file(in_file, out_dir, prefix):
     # Read in the header info
     header = decode_header(lines[0:11])
 
-    nrays = int(header['No. of rays in file'])
     ngates = int(header['Number of gates'])
+    # nrays = int(header['No. of rays in file'])  # Cant do this apparently. Not always correct (wtf)
+    len_data = len(lines[17:])
+    nrays = len_data / (ngates + 1)
+
     gate_length = float(header['Range gate length (m)'])
     start_time = datetime.strptime(header['Start time'], '%Y%m%d %H:%M:%S.%f')
     scan_type = lookup[header['Scan type']]
 
     logging.info("Processing file type: %s" % scan_type)
+    logging.debug("Number of rays: %s" % nrays)
 
     logging.debug("Reading data")
     # Read in the actual data
@@ -121,7 +125,7 @@ def process_file(in_file, out_dir, prefix):
     time = np.asarray(time)
     epoch = np.asarray(epoch)
     base_time = _to_epoch(start_time)
-    time_offset = base_time - epoch
+    time_offset = epoch - base_time
 
     # Figure out netcdf attrs
     nc_attrs = {'start_time': start_time.strftime('%Y-%m-%dT%H:%M:%S')}  # None right now
@@ -162,6 +166,12 @@ def process_file(in_file, out_dir, prefix):
     var.setncattr('long_name', 'Time offset')
     var.setncattr('unis', 'seconds since base_time')
     var[:] = time_offset
+
+    logging.debug('Writing epoch')
+    var = nc.createVariable('epoch', 'i8', dimensions=('time',))
+    var.setncattr('long_name', 'Epoch Time')
+    var.setncattr('unis', 'seconds since 1970-01-01 00:00:00 UTC')
+    var[:] = epoch
 
     logging.debug('Writing hour')
     var = nc.createVariable('hour', 'f8', dimensions=('time',))
