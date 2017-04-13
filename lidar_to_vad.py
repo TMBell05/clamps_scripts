@@ -314,12 +314,16 @@ def write_to_nc(filename, date, elev, u, v, w, hgt, rmse, r_sq):
     rms_var = nc.createVariable('rms', 'f8', ('height',), fill_value=FILL_VALUE)
     r_sq_var = nc.createVariable('r_sq', 'f8', ('height',), fill_value=FILL_VALUE)
 
+    time_var = nc.createVariable('time', 'i8')
+    time_var.setncattr('units', 'seconds since 1970-01-01 00:00:00 UTC')
+
     u_var[:] = np.where(np.isnan(u), FILL_VALUE, u)
     v_var[:] = np.where(np.isnan(v), FILL_VALUE, v)
     w_var[:] = np.where(np.isnan(w), FILL_VALUE, w)
     hgt_var[:] = np.where(np.isnan(hgt), FILL_VALUE, hgt)
     rms_var[:] = np.where(np.isnan(rmse), FILL_VALUE, rmse)
     r_sq_var[:] = np.where(np.isnan(r_sq), FILL_VALUE, r_sq)
+    time_var[0] = (date - datetime(1970, 1, 1)).total_seconds()
 
     # Close the netcdf
     nc.close()
