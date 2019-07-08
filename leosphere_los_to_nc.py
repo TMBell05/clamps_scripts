@@ -158,14 +158,15 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-i', dest='in_file')
+    parser.add_argument('-i', dest='in_file', nargs='*')
     parser.add_argument('-O', dest='out_prefix', default='los')
     parser.add_argument('-o', dest='out_dir', default=os.getcwd())
 
     args = parser.parse_args()
 
     try:
-        process_file(args.in_file, args.out_dir, args.out_prefix)
+        for f in args.in_file:
+            process_file(f, args.out_dir, args.out_prefix)
 
     except Exception:
         print args.in_file
